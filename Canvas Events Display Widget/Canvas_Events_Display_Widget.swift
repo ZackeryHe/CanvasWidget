@@ -9,17 +9,17 @@ import WidgetKit
 import SwiftUI
 import Foundation
 
-struct Provider: AppIntentTimelineProvider {
+struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> SimpleEntry {
-        SimpleEntry(date: Date(), configuration: ConfigurationAppIntent())
+        SimpleEntry(date: Date(), list: [])
     }
 
-    func snapshot(for configuration: ConfigurationAppIntent, in context: Context) async -> SimpleEntry {
-        SimpleEntry(date: Date(), configuration: configuration)
+    func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
+        let entry = SimpleEntry(date: Date(), list: [])
+        completion(entry)
     }
     
-    func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<SimpleEntry> {
-        var entries: [SimpleEntry] = []
+    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
         
         let dateFormatter = ISO8601DateFormatter()
         //from UTC to PST time
@@ -42,9 +42,13 @@ struct Provider: AppIntentTimelineProvider {
             } catch {
                 print("err")
             }
-            //.suffix(6)
+
             print(courses)
+            var allAssignmentsData: [Assignment] = []
+            var currentCourse = 0
+            
             for courseId in courses {
+               
                 let temp1 = "https://canvas.eee.uci.edu/api/v1/calendar_events?access_token=4407~raaHhBFkfUO3st3C42lHjv0TtMuCCR3rvXkXlR1x7e2ktJw1QiVAE8VNhteDdRoj"
                     + "&type=assignment"
                 let temp2 = "&context_codes%5B%5D=course_" + courseId.suffix(5)
@@ -52,49 +56,61 @@ struct Provider: AppIntentTimelineProvider {
                 let temp4 = "&end_date=" + dateFormatter.string(from: endDate)
                 let temp5 = temp3 + temp4
                 let wholeString = temp1 + temp2 + temp5
-                print(wholeString)
+//                print(wholeString)
                 let url = URL(string: wholeString)!
-                
+            
                 let task = URLSession.shared.dataTask(with: url) {(data, response, error) in
                     guard let data = data else {return}
     
                     do {
                         let assignments = try JSONDecoder().decode([Assignments].self, from: data)
-                        
+//
                         for assignmentItem in assignments {
-                            print("\(assignmentItem.title)")
+                            allAssignmentsData.append(Assignment(id: assignmentItem.assignment.id, due_at: assignmentItem.assignment.due_at, name: assignmentItem.assignment.name))
                         }
+                        
+                        print("got data")
+                        print(allAssignmentsData)
+                        currentCourse += 1
+                        print(currentCourse)
+                        let entry = SimpleEntry(date: Date(), list: allAssignmentsData)
+                        let timeline = Timeline(entries: [entry], policy: .after(.now.advanced(by: 60*60*15)))
+                        if (currentCourse == courses.count) { 
+                            print("submitted timeline")
+                            completion(timeline)
+                        }
+                        
+                       
                     } catch {
-                        print("assignments error")
+                        print("assignments--error")
                     }
                 }
                 task.resume()
             }
         }
         task.resume()
-        
-        let currentDate = Date()
-        let entryDate = Calendar.current.date(byAdding: .minute, value: 15, to: currentDate)!
-        let entry = SimpleEntry(date: entryDate, configuration: configuration)
-        entries.append(entry)
 
-        return Timeline(entries: entries, policy: .atEnd)
     }
 }
 
+
 struct SimpleEntry: TimelineEntry {
     let date: Date
-    let configuration: ConfigurationAppIntent
+    let list: [Assignment]
 }
 
 struct Canvas_Events_Display_WidgetEntryView : View {
     var entry: Provider.Entry
 
     var body: some View {
-        VStack {
-            Text("Time:")
-            Text(entry.date, style: .time)
-
+            VStack (alignment: .leading) {
+                Spacer()
+                ForEach(entry.list, id: \.self.name) { assignment in
+                    Text("name: \(assignment.name)")
+                    Text("Due: \(assignment.due_at)")
+                }
+                Spacer()
+            
         }
     }
 }
@@ -103,10 +119,11 @@ struct Canvas_Events_Display_Widget: Widget {
     let kind: String = "Canvas_Events_Display_Widget"
 
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: kind, intent: ConfigurationAppIntent.self, provider: Provider()) { entry in
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
             Canvas_Events_Display_WidgetEntryView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
         }
+        .configurationDisplayName("my widget")
+        .description("my desc")
     }
 }
 
@@ -116,5 +133,11 @@ struct Courses: Decodable {
 }
 
 struct Assignments: Decodable {
-    var title: String
+    var assignment: Assignment
+}
+
+struct Assignment: Decodable {
+    var id: Int
+    var due_at: String
+    var name: String
 }
