@@ -24,7 +24,8 @@ struct Provider: TimelineProvider {
         let dateFormatter = ISO8601DateFormatter()
         //from UTC to PST time
         let todaysDate = Calendar.current.date(byAdding: .hour, value: -7, to: Date())!
-        let startDate = Calendar.current.date(byAdding: .day, value: -3, to: todaysDate)!
+//        let startDate = Calendar.current.date(byAdding: .day, value: -3, to: todaysDate)!
+        let startDate = todaysDate
         let endDate = Calendar.current.date(byAdding: .day, value: 7, to: todaysDate)!
 //        let dateString = dateFormatter.string(from: endDate)
         
@@ -56,7 +57,7 @@ struct Provider: TimelineProvider {
                 let temp4 = "&end_date=" + dateFormatter.string(from: endDate)
                 let temp5 = temp3 + temp4
                 let wholeString = temp1 + temp2 + temp5
-//                print(wholeString)
+                print(wholeString)
                 let url = URL(string: wholeString)!
             
                 let task = URLSession.shared.dataTask(with: url) {(data, response, error) in
@@ -70,13 +71,16 @@ struct Provider: TimelineProvider {
                         }
                         
                         print("got data")
-                        print(allAssignmentsData)
                         currentCourse += 1
                         print(currentCourse)
-                        let entry = SimpleEntry(date: Date(), list: allAssignmentsData)
-                        let timeline = Timeline(entries: [entry], policy: .after(.now.advanced(by: 60*60*15)))
-                        if (currentCourse == courses.count) { 
+                    
+                        if (currentCourse == courses.count) {
                             print("submitted timeline")
+                            
+                            print(allAssignmentsData)
+                            allAssignmentsData.sort { $0.due_at < $1.due_at }
+                            let entry = SimpleEntry(date: Date(), list: Array(allAssignmentsData.prefix(7)))
+                            let timeline = Timeline(entries: [entry], policy: .after(.now.advanced(by: 60*60*15)))
                             completion(timeline)
                         }
                         
@@ -99,19 +103,74 @@ struct SimpleEntry: TimelineEntry {
     let list: [Assignment]
 }
 
+
 struct Canvas_Events_Display_WidgetEntryView : View {
     var entry: Provider.Entry
 
     var body: some View {
-            VStack (alignment: .leading) {
-                Spacer()
-                ForEach(entry.list, id: \.self.name) { assignment in
-                    Text("name: \(assignment.name)")
-                    Text("Due: \(assignment.due_at)")
-                }
-                Spacer()
+        
+        VStack(alignment: .leading) {
             
+            Text("Today").padding(.top).foregroundColor(.red).bold().font(.system(size: 11))
+            Divider().frame(height: 0.5).background(Color.gray.opacity(0.2))
+            
+            ForEach(0..<entry.list.count) { i in
+                let assignment = entry.list[i]
+                let yesterdayIndex = i - 1 >= 0 ? i - 1 : i
+                let yesterday = getWeekday(from: "\(entry.list[yesterdayIndex].due_at)") ?? "invalid date"
+                let todayDay = getWeekday(from: "\(assignment.due_at)") ?? "invalid date"
+
+                let date = formatDateString(from: "\(assignment.due_at)") ?? "invalid date"
+            
+                if yesterday != todayDay {
+                    Text(todayDay).foregroundColor(.gray).bold().font(.system(size: 11))
+                }
+
+            
+                
+                Group {
+                    HStack {
+                        Divider().padding(7).frame(width: 3).overlay(.pink).cornerRadius(/*@START_MENU_TOKEN@*/3.0/*@END_MENU_TOKEN@*/)
+                        Text("\(assignment.name)").bold().font(.system(size: 11)).padding().foregroundColor(.purple)
+
+                        Spacer()
+                        Text(date).padding().font(.system(size: 10)).foregroundColor(.purple)
+                    }
+                }.padding(.bottom, 4)
+                    .frame(height: 25)
+                    .background(Color.purple.opacity(0.1))
+                    .cornerRadius(/*@START_MENU_TOKEN@*/3.0/*@END_MENU_TOKEN@*/)
+            }
+            Spacer()
         }
+        .containerBackground(for: .widget) {
+            Color(red: 0.157, green: 0.157, blue: 0.157)
+        }
+
+    }
+    
+    func getWeekday(from dateString: String) -> String? {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        
+        if let date = dateFormatter.date(from: dateString) {
+            let calendar = Calendar.current
+            let weekday = calendar.component(.weekday, from: date)
+            let weekdayName = calendar.weekdaySymbols[weekday - 1]
+            return weekdayName
+        } else {
+            return nil
+        }
+    }
+    
+    func formatDateString(from dateString: String) -> String? {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        if let date = dateFormatter.date(from: dateString) {
+            dateFormatter.dateFormat = "h:mm a"
+            return dateFormatter.string(from: date)
+        }
+        return nil
     }
 }
 
@@ -136,7 +195,7 @@ struct Assignments: Decodable {
     var assignment: Assignment
 }
 
-struct Assignment: Decodable {
+struct Assignment: Decodable, Identifiable {
     var id: Int
     var due_at: String
     var name: String
