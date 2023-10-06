@@ -80,7 +80,7 @@ struct Provider: TimelineProvider {
                             print(allAssignmentsData)
                             allAssignmentsData.sort { $0.due_at < $1.due_at }
                             let entry = SimpleEntry(date: Date(), list: Array(allAssignmentsData.prefix(7)))
-                            let timeline = Timeline(entries: [entry], policy: .after(.now.advanced(by: 60*60*15)))
+                            let timeline = Timeline(entries: [entry], policy: .after(.now.advanced(by: 60*15)))
                             completion(timeline)
                         }
                         
